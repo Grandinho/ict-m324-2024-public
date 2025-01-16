@@ -1,0 +1,80 @@
+version: "3"
+
+services:
+  mysql:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mydatabase
+      MYSQL_USER: myuser
+      MYSQL_PASSWORD: mypassword
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql # Import SQL on startup
+    networks:
+      - datadog-network
+
+  mysql-query:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mydatabase
+      MYSQL_USER: myuser
+      MYSQL_PASSWORD: mypassword
+    command: sh -c "until mysql -h mysql -umyuser -pmypassword -e 'SELECT COUNT(*) FROM programming_languages;' mydatabase; do echo 'Waiting for MySQL...'; sleep 5; done; while true; do mysql -h mysql -umyuser -pmypassword -e 'SELECT COUNT(*) FROM programming_languages;' mydatabase; sleep 2; done"
+    networks:
+      - datadog-network
+
+  datadog:
+    image: gcr.io/datadoghq/agent:latest
+    environment:
+      DD_API_KEY: 07f2334c5e1686f81e37c90a0c998ccb 
+      DD_AGENT_MAJOR_VERSION: "7"
+      DD_SITE: "datadoghq.eu"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_MYSQL_ENABLED: "true"
+      DD_MYSQL_HOST: mysql
+      DD_MYSQL_PORT: 3306
+      DD_MYSQL_USER: myuser
+      DD_MYSQL_PASS: mypassword
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - datadog-network
+
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    networks:
+      - datadog-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:latest
+    networks:
+      - datadog-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    image: busybox
+    command: sh -c "while true; do echo 'Worker is processing'; sleep 5; done"
+    networks:
+      - datadog-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  datadog-network:
+    driver: bridge
